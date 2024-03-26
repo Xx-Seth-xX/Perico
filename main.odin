@@ -20,6 +20,7 @@ SCREEN_TITLE :: "Perico"
 // UI Constants
 COLOR_SLIDER :: ray.GRAY
 COLOR_SLIDER_SELECTOR :: ray.BLACK
+COLOR_BACKGROUND :: Color{0x10, 0x10, 0x10, 0xff}
 
 app: App
 
@@ -36,10 +37,39 @@ Canvas :: struct {
 	grid:          ray.RenderTexture2D,
 }
 
+color_sliders :: proc(boundary: Rectangle) -> bool {
+	@(static)
+	dragging: [3]bool
+	colors := [3]Color {
+		Color{0xff, 0x00, 0x00, 0xff},
+		Color{0x00, 0xff, 0x00, 0xff},
+		Color{0x00, 0x00, 0xff, 0xff},
+	}
+	sliders_boundary := boundary
+	sliders_boundary.height *= 0.75
+	for i in 0 ..< 3 {
+		slider_rect := Rectangle {
+			sliders_boundary.x,
+			sliders_boundary.y + sliders_boundary.height * 0.33 * f32(i),
+			sliders_boundary.width,
+			sliders_boundary.height * 0.33,
+		}
+		hslider(&(app.active_color[i]), 0, 255, colors[i], slider_rect, &dragging[i])
+	}
+	color_bar := Rectangle {
+		boundary.x + boundary.width * 0.2,
+		boundary.y + sliders_boundary.height,
+		boundary.width * 0.6,
+		boundary.height - sliders_boundary.height,
+	}
+	ray.DrawRectanglePro(color_bar, {}, 0, app.active_color)
+	return dragging[0] || dragging[1] || dragging[2]
+}
 
 hslider :: proc(
 	value: ^$T,
 	min, max: T,
+	selector_color: Color,
 	boundary: ray.Rectangle,
 	dragging: ^bool,
 ) where intrinsics.type_is_numeric(T) {
@@ -48,7 +78,7 @@ hslider :: proc(
 	minf := f32(min)
 	start_pos := ray.Vector2{boundary.x + boundary.width / 8, boundary.y + boundary.height / 2}
 	end_pos := ray.Vector2{boundary.x + boundary.width / 8 * 7, boundary.y + boundary.height / 2}
-	ray.DrawLineEx(start_pos, end_pos, boundary.height / 2, COLOR_SLIDER)
+	ray.DrawLineEx(start_pos, end_pos, boundary.height / 4, COLOR_SLIDER)
 
 	// (value / (max - min)) * (start_pos.x - end_pos.x) 
 
@@ -57,7 +87,7 @@ hslider :: proc(
 		start_pos.y,
 	}
 
-	ray.DrawCircleV(selector_center, boundary.height / 1.8, COLOR_SLIDER_SELECTOR)
+	ray.DrawCircleV(selector_center, boundary.height / 3, selector_color)
 
 	mouse_pos := ray.GetMousePosition()
 	if ray.CheckCollisionPointRec(mouse_pos, boundary) && ray.IsMouseButtonPressed(.LEFT) {
@@ -192,18 +222,19 @@ main :: proc() {
 
 	canvas_init(8, 8, ray.Rectangle{200, 0, 800, SCREEN_HEIGHT})
 	defer canvas_destroy()
-	dragging: [3]bool
 
 	ray.SetTargetFPS(60)
+	can_draw: bool = true
 	for !ray.WindowShouldClose() {
-		canvas_update()
+		screen_width, screen_height := ray.GetScreenWidth(), ray.GetScreenHeight()
+		if can_draw {
+			canvas_update()
+		}
 
 		ray.BeginDrawing()
-		ray.ClearBackground(ray.RAYWHITE)
+		can_draw = !color_sliders({0, 0, 200, 150})
+		ray.ClearBackground(COLOR_BACKGROUND)
 		canvas_render()
-		hslider(&(app.active_color.r), 0, 255, Rectangle{0, 20, 200, 20}, &dragging.r)
-		hslider(&(app.active_color.g), 0, 255, Rectangle{0, 60, 200, 20}, &dragging.g)
-		hslider(&(app.active_color.b), 0, 255, Rectangle{0, 100, 200, 20}, &dragging.b)
 		ray.EndDrawing()
 	}
 	canvas_save_ppm("out.ppm")
