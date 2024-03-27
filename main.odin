@@ -17,7 +17,13 @@ SCREEN_WIDTH :: 1000
 SCREEN_HEIGHT :: 800
 SCREEN_TITLE :: "Perico"
 
+
 // UI Constants
+CANVAS_WIDTH :: 0.8
+CANVAS_HEIGHT :: 1.0
+SLIDERS_HEIGHT :: 0.2
+
+// UI-Color Constants
 COLOR_SLIDER :: ray.GRAY
 COLOR_SLIDER_SELECTOR :: ray.BLACK
 COLOR_BACKGROUND :: Color{0x10, 0x10, 0x10, 0xff}
@@ -32,7 +38,6 @@ App :: struct {
 Canvas :: struct {
 	data:          []Color,
 	width, height: int,
-	boundary:      ray.Rectangle,
 	text:          ray.Texture2D,
 	grid:          ray.RenderTexture2D,
 }
@@ -140,7 +145,6 @@ canvas_save_ppm :: proc(filename: string) {
 
 canvas_init :: proc(w, h: int, rect: ray.Rectangle) {
 	app.canvas.width, app.canvas.height = w, h
-	app.canvas.boundary = rect
 	err: mem.Allocator_Error = nil
 	app.canvas.data, err = make([]Color, w * h)
 	mem.set(raw_data(app.canvas.data), 0xff, size_of(app.canvas.data[0]) * w * h)
@@ -183,38 +187,48 @@ canvas_destroy :: proc() {
 	delete(canvas.data)
 }
 
-canvas_render :: proc() {
+
+canvas :: proc(can_draw: bool, boundary: Rectangle) {
 	using app
+	center := ray.Vector2{boundary.x + boundary.width / 2, boundary.y + boundary.height /2}
+	size := boundary.width if boundary.width < boundary.height else boundary.height
+	boundary := Rectangle{
+		center.x - size / 2,
+		center.y - size / 2,
+		size,
+		size,
+	}
+	if can_draw {
+		mouse_pos := ray.GetMousePosition()
+		if ray.IsMouseButtonDown(.LEFT) && ray.CheckCollisionPointRec(mouse_pos, boundary) {
+			rect_pos := mouse_pos - ray.Vector2{boundary.x, boundary.y}
+			canvas_x := int(f32(canvas.width) * (rect_pos.x / boundary.width))
+			canvas_y := int(f32(canvas.height) * (rect_pos.y / boundary.height))
+
+			canvas.data[canvas_x + canvas_y * canvas.width] = active_color
+		}
+		ray.UpdateTexture(canvas.text, raw_data(canvas.data))
+	}
 	ray.DrawTexturePro(
 		canvas.text,
 		ray.Rectangle{0, 0, f32(canvas.width), f32(canvas.height)},
-		canvas.boundary,
+		boundary,
 		ray.Vector2{},
 		0,
 		ray.WHITE,
 	)
-	ray.DrawTextureV(
+	ray.DrawTexturePro(
 		canvas.grid.texture,
-		ray.Vector2{canvas.boundary.x, canvas.boundary.y},
+		{0, 0, f32(canvas.grid.texture.width), f32(canvas.grid.texture.height)},
+		boundary,
+		{},
+		0,
 		ray.WHITE,
 	)
 }
 
-canvas_update :: proc() {
-	using app
-	mouse_pos := ray.GetMousePosition()
-	if ray.IsMouseButtonDown(.LEFT) && ray.CheckCollisionPointRec(mouse_pos, canvas.boundary) {
-		rect_pos := mouse_pos - ray.Vector2{canvas.boundary.x, canvas.boundary.y}
-		canvas_x := int(f32(canvas.width) * (rect_pos.x / canvas.boundary.width))
-		canvas_y := int(f32(canvas.height) * (rect_pos.y / canvas.boundary.height))
-
-		canvas.data[canvas_x + canvas_y * canvas.width] = active_color
-	}
-	ray.UpdateTexture(canvas.text, raw_data(canvas.data))
-}
-
 main :: proc() {
-	// ray.SetConfigFlags(ray.ConfigFlags{.WINDOW_RESIZABLE})
+	ray.SetConfigFlags(ray.ConfigFlags{.WINDOW_RESIZABLE})
 	app.active_color = Color{0x00, 0xff, 0x00, 0xff}
 
 	ray.InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
@@ -226,17 +240,22 @@ main :: proc() {
 	ray.SetTargetFPS(60)
 	can_draw: bool = true
 	for !ray.WindowShouldClose() {
-		screen_width, screen_height := ray.GetScreenWidth(), ray.GetScreenHeight()
-		if can_draw {
-			canvas_update()
-		}
+		screen_width, screen_height := f32(ray.GetScreenWidth()), f32(ray.GetScreenHeight())
 
 		ray.BeginDrawing()
-		can_draw = !color_sliders({0, 0, 200, 150})
+		can_draw =
+		!color_sliders({0, 0, screen_width * (1 - CANVAS_WIDTH), screen_height * SLIDERS_HEIGHT})
 		ray.ClearBackground(COLOR_BACKGROUND)
-		canvas_render()
+		canvas(
+			can_draw,
+			 {
+				screen_width * (1 - CANVAS_WIDTH),
+				0,
+				screen_width * CANVAS_WIDTH,
+				screen_height * CANVAS_HEIGHT,
+			},
+		)
 		ray.EndDrawing()
 	}
 	canvas_save_ppm("out.ppm")
-
 }
